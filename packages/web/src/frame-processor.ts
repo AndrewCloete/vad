@@ -47,6 +47,13 @@ export interface FrameProcessorOptions {
    * If true, when the user pauses the VAD, it may trigger `onSpeechEnd`.
    */
   submitUserSpeechOnPause: boolean
+
+  /**
+   * If specified, it a factor of this with the speechFrameCount is multiplied to the redemption frames
+   * to make the timeout more aggressive as the speechFrameCount grows. This reduces the variance on the
+   * length of audio chunks produced.
+   */
+  thresholdTimeConstantSeconds: number | null
 }
 
 export const defaultLegacyFrameProcessorOptions: FrameProcessorOptions = {
@@ -57,6 +64,7 @@ export const defaultLegacyFrameProcessorOptions: FrameProcessorOptions = {
   frameSamples: 1536,
   minSpeechFrames: 3,
   submitUserSpeechOnPause: false,
+  thresholdTimeConstantSeconds: 10,
 }
 
 export const defaultV5FrameProcessorOptions: FrameProcessorOptions = {
@@ -67,6 +75,7 @@ export const defaultV5FrameProcessorOptions: FrameProcessorOptions = {
   frameSamples: 512,
   minSpeechFrames: 9,
   submitUserSpeechOnPause: false,
+  thresholdTimeConstantSeconds: 10,
 }
 
 export function validateOptions(options: FrameProcessorOptions) {
@@ -123,6 +132,8 @@ const concatArrays = (arrays: Float32Array[]): Float32Array => {
   return outArray
 }
 
+const IDEAL_SNIPPET_SECONDS = 10
+const IDEAL_NUM_OF_FRAMES = this.op * 10
 export class FrameProcessor implements FrameProcessorInterface {
   speaking: boolean = false
   audioBuffer: { frame: Float32Array; isSpeech: boolean }[]
@@ -130,6 +141,7 @@ export class FrameProcessor implements FrameProcessorInterface {
   speechFrameCount = 0
   active = false
   speechRealStartFired = false
+  idealNumberOfFrames: number | null = null
 
   constructor(
     public modelProcessFunc: (
@@ -139,6 +151,9 @@ export class FrameProcessor implements FrameProcessorInterface {
     public options: FrameProcessorOptions
   ) {
     this.audioBuffer = []
+    this.idealNumberOfFrames = this.options.thresholdTimeConstantSeconds
+      ? this.options.thresholdTimeConstantSeconds * 10
+      : null
     this.reset()
   }
 
@@ -172,7 +187,7 @@ export class FrameProcessor implements FrameProcessorInterface {
 
     if (speaking) {
       const speechFrameCount = audioBuffer.reduce((acc, item) => {
-        return item.isSpeech ? (acc + 1) : acc
+        return item.isSpeech ? acc + 1 : acc
       }, 0)
       if (speechFrameCount >= this.options.minSpeechFrames) {
         const audio = concatArrays(audioBuffer.map((item) => item.frame))
@@ -221,11 +236,17 @@ export class FrameProcessor implements FrameProcessorInterface {
       handleEvent({ msg: Message.SpeechRealStart })
     }
 
+    const redemptionFactor = this.idealNumberOfFrames
+      ? this.idealNumberOfFrames / this.speechFrameCount
+      : 1
+    const redemptionFrames = this.options.redemptionFrames * redemptionFactor
     if (
       probs.isSpeech < this.options.negativeSpeechThreshold &&
       this.speaking &&
-      ++this.redemptionCounter >= this.options.redemptionFrames
+      ++this.redemptionCounter >= redemptionFrames
     ) {
+      console.log("redemptionFactor", redemptionFactor)
+      console.log("redemptionFrames", redemptionFrames)
       this.redemptionCounter = 0
       this.speechFrameCount = 0
       this.speaking = false
@@ -234,7 +255,7 @@ export class FrameProcessor implements FrameProcessorInterface {
       this.audioBuffer = []
 
       const speechFrameCount = audioBuffer.reduce((acc, item) => {
-        return item.isSpeech ? (acc + 1) : acc
+        return item.isSpeech ? acc + 1 : acc
       }, 0)
 
       if (speechFrameCount >= this.options.minSpeechFrames) {
