@@ -132,8 +132,6 @@ const concatArrays = (arrays: Float32Array[]): Float32Array => {
   return outArray
 }
 
-const IDEAL_SNIPPET_SECONDS = 10
-const IDEAL_NUM_OF_FRAMES = this.op * 10
 export class FrameProcessor implements FrameProcessorInterface {
   speaking: boolean = false
   audioBuffer: { frame: Float32Array; isSpeech: boolean }[]

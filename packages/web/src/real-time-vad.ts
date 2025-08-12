@@ -250,6 +250,7 @@ export class AudioNodeVAD {
         preSpeechPadFrames: fullOptions.preSpeechPadFrames,
         minSpeechFrames: fullOptions.minSpeechFrames,
         submitUserSpeechOnPause: fullOptions.submitUserSpeechOnPause,
+        thresholdTimeConstantSeconds: fullOptions.thresholdTimeConstantSeconds,
       }
     )
 
